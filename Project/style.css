@@ -1,0 +1,101 @@
+:root {
+  --bg: #0f1115;
+  --card: #171923;
+  --text: #e4e6eb;
+  --muted: #9aa0a6;
+  --primary: #4f46e5;
+}
+body {
+  margin: 0;
+  font-family: Inter, system-ui, Segoe UI, Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+.container {
+  max-width: 1000px;
+  margin: 40px auto;
+  padding: 0 16px;
+}
+.card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.35);
+}
+h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+p.caption {
+  color: var(--muted);
+  margin: 0 0 18px;
+}
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.btn {
+  background: #1f2340;
+  color: #fff;
+  border: 1px solid #2a2f55;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.05s ease;
+}
+.btn:hover {
+  transform: translateY(-1px);
+}
+.btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.field {
+  flex: 1;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field input,
+.field textarea {
+  background: #11131b;
+  border: 1px solid #22263f;
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+}
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+.error {
+  color: #ff6b6b;
+  margin-top: 10px;
+}
+.tiny {
+  color: var(--muted);
+  font-size: 12px;
+}
+canvas {
+  background: #0c0e14;
+  border: 1px solid #202439;
+  border-radius: 12px;
+  padding: 8px;
+}
+.pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #101328;
+  border: 1px solid #1f2450;
+  color: #cfd3ff;
+  font-size: 12px;
+}
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  white-space: pre;
+}
