@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8" />
+    <title>Analiză Piețe – SMA / EMA / Regresie Liniară</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Stil extern -->
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <h1>Analiză SMA / EMA / Regresie Liniară (client‑only)</h1>
+        <p class="caption">
+          Alege timeframe-ul, introdu prețurile (separate prin virgulă/ spațiu/
+          linie nouă) și apasă „Calculează”. Totul rulează în browser, fără
+          backend.
+        </p>
+
+        <div id="timeframes" class="row" aria-label="Timeframes"></div>
+
+        <div class="row" style="margin-top: 12px">
+          <div class="field">
+            <label for="prices"
+              >Prețuri
+              <span class="tiny">(ex: 101, 103.5, 99, 104)</span></label
+            >
+            <textarea
+              id="prices"
+              rows="4"
+              placeholder="101, 103.5, 99, 104"
+            ></textarea>
+          </div>
+          <div class="field" style="max-width: 220px">
+            <label for="window"
+              >Fereastră SMA/EMA <span class="tiny" id="winHint"></span
+            ></label>
+            <input
+              id="window"
+              type="number"
+              min="1"
+              step="1"
+              placeholder="ex: 3"
+            />
+            <label class="tiny" for="decimals" style="margin-top: 8px"
+              >Zecimale afișate</label
+            >
+            <input
+              id="decimals"
+              type="number"
+              min="0"
+              max="8"
+              step="1"
+              value="2"
+            />
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="calc" class="btn">Calculează</button>
+          <button id="clear" class="btn" type="button">Curăță</button>
+          <span id="status" class="pill">Pregătit</span>
+        </div>
+
+        <div id="err" class="error" role="alert" style="display: none"></div>
+
+        <div style="margin-top: 18px">
+          <canvas id="chart" height="300"></canvas>
+        </div>
+
+        <details style="margin-top: 14px">
+          <summary>
+            <strong>Rezultate numerice</strong> (primele 20 valori)
+          </summary>
+          <pre id="tableOut" class="mono"></pre>
+        </details>
+
+        <p class="tiny" style="margin-top: 10px">
+          Timeframes:
+          <em>1 zi, 5 zile, 1 săptămână, 1 lună, 3 luni, 6 luni</em>. Lungimea
+          ferestrei (SMA/EMA) poate fi setată manual; dacă o lași goală, folosim
+          o valoare implicită asociată timeframe‑ului.
+        </p>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+      // --- Opțiuni timeframe & ferestre implicite ---
+      const TIMEFRAMES = [
+        "1 zi",
+        "5 zile",
+        "1 săptămână",
+        "1 lună",
+        "3 luni",
+        "6 luni",
+      ];
+      const DEFAULT_WINDOWS = {
+        "1 zi": 3,
+        "5 zile": 3,
+        "1 săptămână": 5,
+        "1 lună": 7,
+        "3 luni": 9,
+        "6 luni": 12,
+      };
+
+      // --- Elemente UI ---
+      const elTimeframes = document.getElementById("timeframes");
+      const elPrices = document.getElementById("prices");
+      const elWindow = document.getElementById("window");
+      const elWinHint = document.getElementById("winHint");
+      const elDecimals = document.getElementById("decimals");
+      const elCalc = document.getElementById("calc");
+      const elClear = document.getElementById("clear");
+      const elErr = document.getElementById("err");
+      const elStatus = document.getElementById("status");
+      const elTable = document.getElementById("tableOut");
+
+      let state = { timeframe: TIMEFRAMES[0] };
+      let chart;
+
+      // --- Utilitare ---
+      const setStatus = (msg) => (elStatus.textContent = msg);
+      const showError = (msg) => {
+        elErr.style.display = "block";
+        elErr.textContent = msg;
+      };
+      const clearError = () => {
+        elErr.style.display = "none";
+        elErr.textContent = "";
+      };
+
+      const renderButtons = () => {
+        elTimeframes.innerHTML = "";
+        TIMEFRAMES.forEach((tf) => {
+          const b = document.createElement("button");
+          b.className = "btn";
+          b.textContent = tf;
+          b.onclick = () => {
+            state.timeframe = tf;
+            document
+              .querySelectorAll("#timeframes .btn")
+              .forEach((x) => x.classList.remove("active"));
+            b.classList.add("active");
+            const w = DEFAULT_WINDOWS[tf] ?? 3;
+            elWinHint.textContent = `(implicit: ${w})`;
+            if (!elWindow.value) elWindow.value = w;
+          };
+          elTimeframes.appendChild(b);
+        });
+        // selectează prima opțiune implicit
+        const firstBtn = document.querySelector("#timeframes .btn");
+        if (firstBtn) firstBtn.click();
+      };
+
+      const parsePrices = (txt) =>
+        txt
+          .split(/[\n,;\s]+/)
+          .filter(Boolean)
+          .map(Number)
+          .filter((v) => Number.isFinite(v));
+
+      // --- Algoritmi în JS ---
+      function SMA(prices, window) {
+        if (window <= 0) throw new Error("Fereastra SMA trebuie să fie > 0");
+        if (prices.length === 0) return [];
+        const out = new Array(prices.length).fill(null);
+        let sum = 0;
+        for (let i = 0; i < prices.length; i++) {
+          sum += prices[i];
+          if (i >= window) sum -= prices[i - window];
+          if (i >= window - 1) out[i] = sum / window;
+        }
+        return out;
+      }
+
+      function EMA(prices, window) {
+        if (window <= 0) throw new Error("Fereastra EMA trebuie să fie > 0");
+        if (prices.length === 0) return [];
+        const k = 2 / (window + 1);
+        const out = new Array(prices.length).fill(null);
+        let ema = prices[0];
+        out[0] = ema;
+        for (let i = 1; i < prices.length; i++) {
+          ema = prices[i] * k + ema * (1 - k);
+          out[i] = ema;
+        }
+        return out;
+      }
+
+      function LinearRegression(prices) {
+        const n = prices.length;
+        if (n === 0) return [];
+        const x = Array.from({ length: n }, (_, i) => i);
+        const sum_x = x.reduce((a, b) => a + b, 0);
+        const sum_y = prices.reduce((a, b) => a + b, 0);
+        const sum_xy = prices.reduce((acc, y, i) => acc + x[i] * y, 0);
+        const sum_x2 = x.reduce((acc, i) => acc + i * i, 0);
+        const denom = n * sum_x2 - sum_x * sum_x || 1; // evit 0
+        const m = (n * sum_xy - sum_x * sum_y) / denom;
+        const b = (sum_y - m * sum_x) / n;
+        return x.map((i) => m * i + b);
+      }
+
+      // --- Chart ---
+      const drawChart = (labels, prices, sma, ema, lr) => {
+        const ctx = document.getElementById("chart");
+        const ds = [
+          {
+            label: `Prețuri (${state.timeframe})`,
+            data: prices,
+            borderWidth: 2,
+            pointRadius: 3,
+          },
+          {
+            label: `SMA (${elWindow.value})`,
+            data: sma,
+            borderDash: [6, 4],
+            borderWidth: 2,
+            pointRadius: 0,
+          },
+          {
+            label: `EMA (${elWindow.value})`,
+            data: ema,
+            borderDash: [2, 3],
+            borderWidth: 2,
+            pointRadius: 0,
+          },
+          {
+            label: `Regresie Liniară`,
+            data: lr,
+            borderDash: [1, 4],
+            borderWidth: 2,
+            pointRadius: 0,
+          },
+        ];
+        const cfg = {
+          type: "line",
+          data: { labels, datasets: ds },
+          options: {
+            responsive: true,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { labels: { color: "#e4e6eb" } },
+              title: {
+                display: true,
+                text: "Analiza seriei de prețuri",
+                color: "#e4e6eb",
+              },
+            },
+            scales: {
+              x: { ticks: { color: "#cbd5e1" }, grid: { color: "#1f243d" } },
+              y: { ticks: { color: "#cbd5e1" }, grid: { color: "#1f243d" } },
+            },
+          },
+        };
+        if (chart) chart.destroy();
+        chart = new Chart(ctx, cfg);
+      };
+
+      const formatNum = (v, d) => (v == null ? "—" : Number(v).toFixed(d));
+
+      const renderPreviewTable = (labels, prices, sma, ema, lr, dec = 2) => {
+        const N = Math.min(labels.length, 20);
+        let out = "Idx\tPreț\tSMA\tEMA\tLR\n";
+        for (let i = 0; i < N; i++) {
+          out += `${labels[i]}\t${formatNum(prices[i], dec)}\t${formatNum(
+            sma[i],
+            dec
+          )}\t${formatNum(ema[i], dec)}\t${formatNum(lr[i], dec)}\n`;
+        }
+        elTable.textContent = out;
+      };
+
+      // --- Evenimente ---
+      elCalc.addEventListener("click", () => {
+        clearError();
+        setStatus("Calculez...");
+        const prices = parsePrices(elPrices.value);
+        if (!prices.length) {
+          showError(
+            "Introdu prețurile separate prin virgulă/ spațiu sau linii noi."
+          );
+          setStatus("Eroare");
+          return;
+        }
+        let win = elWindow.value
+          ? parseInt(elWindow.value, 10)
+          : DEFAULT_WINDOWS[state.timeframe] ?? 3;
+        if (!Number.isInteger(win) || win <= 0) {
+          showError("Fereastra trebuie să fie un număr întreg > 0.");
+          setStatus("Eroare");
+          return;
+        }
+        const labels = Array.from({ length: prices.length }, (_, i) => i + 1);
+        try {
+          const sma = SMA(prices, win);
+          const ema = EMA(prices, win);
+          const lr = LinearRegression(prices);
+          drawChart(labels, prices, sma, ema, lr);
+          renderPreviewTable(
+            labels,
+            prices,
+            sma,
+            ema,
+            lr,
+            parseInt(elDecimals.value || "2", 10)
+          );
+          setStatus("Gata");
+        } catch (e) {
+          showError(e.message || "Eroare necunoscută.");
+          setStatus("Eroare");
+        }
+      });
+
+      elClear.addEventListener("click", () => {
+        elPrices.value = "";
+        elWindow.value = "";
+        elWinHint.textContent = "";
+        clearError();
+        setStatus("Pregătit");
+        if (chart) chart.destroy();
+        elTable.textContent = "";
+        // reselectează primul timeframe
+        document
+          .querySelectorAll("#timeframes .btn")
+          .forEach((x) => x.classList.remove("active"));
+        const firstBtn = document.querySelector("#timeframes .btn");
+        if (firstBtn) firstBtn.click();
+      });
+
+      // init UI
+      renderButtons();
+    </script>
+  </body>
+</html>
